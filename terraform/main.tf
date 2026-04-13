@@ -52,7 +52,7 @@ resource "google_project_iam_member" "sa_dataproc" {
 # GCS Bucket — Data Lake
 # ---------------------------------------------------------------
 resource "google_storage_bucket" "data_lake" {
-  name          = "${var.project_id}-ecom-data-lake"
+  name          = var.data_lake_bucket_name
   location      = var.region
   force_destroy = true
   storage_class = "STANDARD"
@@ -73,14 +73,14 @@ resource "google_storage_bucket" "data_lake" {
 # BigQuery Datasets
 # ---------------------------------------------------------------
 resource "google_bigquery_dataset" "raw" {
-  dataset_id = "ecommerce_raw"
+  dataset_id = var.raw_dataset_id
   location   = var.region
 
   delete_contents_on_destroy = true
 }
 
 resource "google_bigquery_dataset" "prod" {
-  dataset_id = "ecommerce_prod"
+  dataset_id = var.prod_dataset_id
   location   = var.region
 
   delete_contents_on_destroy = true
@@ -96,10 +96,6 @@ resource "google_composer_environment" "pipeline" {
   config {
     software_config {
       image_version = "composer-2-airflow-2"
-
-      pypi_packages = {
-        "kaggle" = ""
-      }
     }
 
     workloads_config {

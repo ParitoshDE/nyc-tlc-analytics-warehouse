@@ -5,7 +5,7 @@
 
 with date_spine as (
 
-    select distinct event_date as date_key
+    select distinct pickup_date as date_key
     from {{ ref('stg_events') }}
 
 )

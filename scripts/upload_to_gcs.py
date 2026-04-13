@@ -1,7 +1,7 @@
 """
-upload_to_gcs.py — Upload raw CSV files from data/raw/ to GCS data lake.
+upload_to_gcs.py — Upload raw parquet files from data/raw/ to GCS data lake.
 
-Uploads each CSV to gs://<bucket>/raw/<filename>.
+Uploads each parquet file to gs://<bucket>/raw/<filename>.
 """
 from __future__ import annotations
 
@@ -22,24 +22,26 @@ def upload_to_gcs() -> None:
     client = storage.Client()
     bucket = client.bucket(bucket_name)
 
-    csv_files = sorted(RAW_DIR.glob("*.csv"))
-    if not csv_files:
-        print(f"[upload] No CSV files found in {RAW_DIR}")
+    parquet_files = sorted(RAW_DIR.glob("*.parquet"))
+    if not parquet_files:
+        print(f"[upload] No parquet files found in {RAW_DIR}")
         return
 
-    for csv_path in csv_files:
-        blob_name = f"raw/{csv_path.name}"
+    for parquet_path in parquet_files:
+        blob_name = f"raw/{parquet_path.name}"
         blob = bucket.blob(blob_name)
 
         if blob.exists():
             print(f"[upload] gs://{bucket_name}/{blob_name} already exists, skipping")
             continue
 
-        print(f"[upload] Uploading {csv_path.name} → gs://{bucket_name}/{blob_name}")
-        blob.upload_from_filename(str(csv_path), timeout=600)
-        print(f"[upload] {csv_path.name} uploaded ({csv_path.stat().st_size / 1e9:.2f} GB)")
+        print(f"[upload] Uploading {parquet_path.name} → gs://{bucket_name}/{blob_name}")
+        blob.upload_from_filename(str(parquet_path), timeout=600)
+        print(
+            f"[upload] {parquet_path.name} uploaded ({parquet_path.stat().st_size / 1e9:.2f} GB)"
+        )
 
-    print(f"[upload] Done. {len(csv_files)} files processed.")
+    print(f"[upload] Done. {len(parquet_files)} files processed.")
 
 
 if __name__ == "__main__":

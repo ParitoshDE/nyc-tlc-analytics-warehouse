@@ -1,36 +1,32 @@
 -- stg_events.sql
--- Staging model: clean, typed events from BigQuery raw layer.
+-- Staging model: clean, typed NYC TLC trips from BigQuery raw layer.
 
 {{ config(materialized='view') }}
 
 with source as (
 
-    select * from {{ source('ecommerce_raw', 'events') }}
+    select * from {{ source('ecommerce_raw', 'trips') }}
 
 ),
 
 cleaned as (
 
     select
-        cast(event_time as timestamp)       as event_time,
-        cast(event_date as date)            as event_date,
-        cast(hour as int64)                 as hour,
+        cast(vendor_id as int64)            as vendor_id,
+        cast(pickup_datetime as timestamp)  as pickup_datetime,
+        cast(dropoff_datetime as timestamp) as dropoff_datetime,
+        cast(pickup_date as date)           as pickup_date,
+        cast(pickup_hour as int64)          as pickup_hour,
         cast(day_of_week as int64)          as day_of_week,
-        cast(event_type as string)          as event_type,
-        cast(product_id as int64)           as product_id,
-        cast(category_id as int64)          as category_id,
-        coalesce(cast(category_code as string), 'unknown')   as category_code,
-        coalesce(cast(category_level1 as string), 'unknown') as category_level1,
-        cast(category_level2 as string)     as category_level2,
-        coalesce(cast(brand as string), 'unknown')           as brand,
-        cast(price as float64)              as price,
-        cast(user_id as int64)              as user_id,
-        cast(user_session as string)        as user_session,
-        cast(session_duration_sec as int64) as session_duration_sec,
-        cast(session_event_count as int64)  as session_event_count,
-        cast(session_has_purchase as int64) as session_has_purchase,
-        cast(session_has_cart as int64)     as session_has_cart,
-        cast(session_has_view as int64)     as session_has_view
+        cast(passenger_count as float64)    as passenger_count,
+        cast(trip_distance as float64)      as trip_distance,
+        cast(pulocation_id as int64)        as pulocation_id,
+        cast(dolocation_id as int64)        as dolocation_id,
+        cast(payment_type as int64)         as payment_type,
+        cast(fare_amount as float64)        as fare_amount,
+        cast(tip_amount as float64)         as tip_amount,
+        cast(total_amount as float64)       as total_amount,
+        cast(trip_duration_min as float64)  as trip_duration_min
 
     from source
 

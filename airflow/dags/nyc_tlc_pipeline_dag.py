@@ -2,8 +2,8 @@
 nyc_tlc_pipeline_dag.py — Airflow DAG for the nyc-tlc-analytics-warehouse pipeline.
 
 Workflow:
-  1. download_from_kaggle  — kaggle datasets download to local/GCS
-  2. upload_raw_to_gcs     — push raw CSVs to GCS data lake
+    1. download_from_tlc      — NYC TLC parquet download to local
+    2. upload_raw_to_gcs      — push raw parquet files to GCS data lake
   3. spark_transform        — PySpark job: clean, enrich, write Parquet
   4. load_to_bigquery       — load Parquet from GCS into BigQuery raw dataset
   5. dbt_run                — run dbt models (staging → dims → facts → aggs)
@@ -30,15 +30,15 @@ default_args = {
 with DAG(
     dag_id="nyc_tlc_analytics_pipeline",
     default_args=default_args,
-    description="Batch pipeline: Kaggle → GCS → Spark → BigQuery → dbt",
+    description="Batch pipeline: NYC TLC → GCS → Spark → BigQuery → dbt",
     schedule_interval="@monthly",
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=["ecommerce", "batch", "warehouse"],
+    tags=["nyc-tlc", "batch", "warehouse"],
 ) as dag:
 
-    download_from_kaggle = BashOperator(
-        task_id="download_from_kaggle",
+    download_from_tlc = BashOperator(
+        task_id="download_from_tlc",
         bash_command=(
             f"cd {PROJECT_DIR} && "
             "python scripts/download_data.py"
@@ -86,7 +86,7 @@ with DAG(
     )
 
     (
-        download_from_kaggle
+        download_from_tlc
         >> upload_raw_to_gcs
         >> spark_transform
         >> load_to_bigquery

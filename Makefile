@@ -6,7 +6,7 @@ export
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-setup: ## Install Python deps and configure Kaggle
+setup: ## Install Python dependencies
 	pip install -r requirements.txt
 	mkdir -p data/raw data/processed keys
 
@@ -16,10 +16,10 @@ infra-up: ## Provision GCP resources with Terraform
 infra-down: ## Tear down GCP resources
 	cd terraform && terraform destroy -auto-approve
 
-download: ## Download dataset from Kaggle
+download: ## Download NYC TLC parquet files
 	python scripts/download_data.py
 
-upload: ## Upload raw CSVs to GCS
+upload: ## Upload raw Parquet files to GCS
 	python scripts/upload_to_gcs.py
 
 spark: ## Run PySpark transformation

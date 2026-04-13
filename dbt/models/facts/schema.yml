@@ -2,22 +2,22 @@ version: 2
 
 models:
   - name: fct_event
-    description: "Event fact table — one row per user event with surrogate key"
+    description: "Trip fact table — one row per taxi trip with surrogate key"
     columns:
       - name: event_id
         tests:
           - unique
           - not_null
-      - name: event_type
+      - name: pickup_date
         tests:
           - not_null
-      - name: product_id
+      - name: pulocation_id
         tests:
           - relationships:
               to: ref('dim_product')
-              field: product_id
-      - name: user_id
+              field: location_id
+      - name: vendor_id
         tests:
           - relationships:
               to: ref('dim_user')
-              field: user_id
+              field: vendor_id

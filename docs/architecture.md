@@ -1,81 +1,64 @@
-# Architecture — nyc-tlc-analytics-warehouse
+# Architecture
 
-## Overview
+Batch data pipeline ingesting NYC TLC trip data through a GCP-native stack.
+Data flows from NYC TLC monthly parquet files -> GCS -> Spark -> BigQuery -> dbt -> Looker Studio.
 
-Batch data pipeline ingesting 285M e-commerce clickstream events through a GCP-native stack. Data flows from Kaggle → GCS → Spark → BigQuery → dbt → Looker Studio.
-
-## Pipeline Flow
+## End-to-End Flow
 
 ```
-┌────────────┐     ┌──────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│   Kaggle   │────▶│   GCS    │────▶│   PySpark    │────▶│  BigQuery   │────▶│ Looker Studio│
-│  (source)  │     │ (raw CSV)│     │ (transform)  │     │   (DWH)     │     │ (dashboard)  │
-└────────────┘     └──────────┘     └──────────────┘     └──────┬──────┘     └──────────────┘
-                                                                │
-                                                           ┌────▼────┐
-                                                           │   dbt   │
-                                                           │ (models)│
-                                                           └─────────┘
+ NYC TLC host --> GCS (raw parquet) --> Spark (transform/enrich) --> BigQuery (raw) --> dbt (prod marts) --> Looker Studio
 ```
 
-Orchestrated by **Cloud Composer (Airflow 2.x)**. Infrastructure provisioned by **Terraform**.
+## Airflow DAG Tasks
 
-## Airflow DAG
+1. download_from_tlc - scripts/download_data.py: download monthly parquet files
+2. upload_raw_to_gcs - scripts/upload_to_gcs.py: upload raw parquet to GCS
+3. spark_transform - spark/transform_events.py: normalize fields and derive metrics
+4. load_to_bigquery - scripts/load_to_bigquery.py: load processed parquet into nyc_tlc_raw.trips
+5. dbt_run - build dimensional and aggregate models
+6. dbt_test - run dbt tests
 
-Six sequential tasks:
+## Storage and Modeling
 
-1. **download_from_kaggle** — `scripts/download_data.py`: Kaggle API download + optional REES46 extra months
-2. **upload_raw_to_gcs** — `scripts/upload_to_gcs.py`: push CSVs to `gs://<bucket>/raw/`
-3. **spark_transform** — `spark/transform_events.py`: parse timestamps, split categories, compute session metrics, write partitioned Parquet
-4. **load_to_bigquery** — `scripts/load_to_bigquery.py`: load Parquet into `ecommerce_raw.events`
-5. **dbt_run** — Docker: `dbt run` builds staging → dimensions → facts → aggregations
-6. **dbt_test** — Docker: `dbt test` validates data quality
+### Raw Layer (BigQuery)
+- Table: nyc_tlc_raw.trips
+- Partition: pickup_date
+- Clustering: pulocation_id, dolocation_id, payment_type
 
-## Data Layers
+### Curated Layer (dbt)
+- Dataset: nyc_tlc_prod
+- Staging: stg_events (trip staging view)
+- Dimensions: dim_date, dim_pickup_zone, dim_dropoff_zone, dim_vendor, dim_payment_type
+- Fact: fct_event (trip-grain fact)
+- Aggregations: agg_daily_kpis, agg_hourly_traffic, agg_zone_performance, agg_payment_type_mix
 
-### Raw (GCS)
-- Monthly CSVs: `gs://<bucket>/raw/*.csv`
-- 9 columns, ~285M rows
+## Spark Transform Logic
 
-### Processed (GCS)
-- Spark output: `gs://<bucket>/processed/event_date=YYYY-MM-DD/*.parquet`
-- Enriched with: `event_date`, `hour`, `day_of_week`, `category_level1`, `category_level2`, session metrics
+Core transformations in spark/transform_events.py:
 
-### BigQuery Raw
-- Table: `ecommerce_raw.events`
-- Partitioned by `event_date` (DAY)
-- Clustered by `event_type`, `category_level1`
+1. Read raw parquet files from data/raw
+2. Normalize pickup/dropoff timestamps
+3. Derive pickup_date and pickup_hour
+4. Compute trip_duration_min and keep canonical trip fields
+5. Write partitioned parquet output to data/processed by pickup_date
 
-### BigQuery Prod (dbt)
-- Star schema in `ecommerce_prod`:
-  - **Staging**: `stg_events` (view) — type casting, null handling
-  - **Dimensions**: `dim_product`, `dim_user`, `dim_session`, `dim_date`
-  - **Fact**: `fct_event` — event grain with surrogate key, partitioned + clustered
-  - **Aggregations**: `agg_funnel_by_category`, `agg_brand_performance`, `agg_hourly_traffic`, `agg_cart_abandonment`
+## Configuration
 
-## Spark Transformations
-
-1. Parse `event_time` → extract `event_date`, `hour`, `day_of_week`
-2. Split `category_code` on `.` → `category_level1`, `category_level2`
-3. Fill null `brand` with "unknown"
-4. Window functions per `user_session`: `session_duration_sec`, `session_event_count`, `session_has_purchase`, `session_has_cart`, `session_has_view`
-5. Output partitioned by `event_date` as Snappy-compressed Parquet
-
-## Infrastructure (Terraform)
-
-| Resource | Name |
+| Variable | Purpose |
 |---|---|
-| GCS Bucket | `<project>-ecom-data-lake` |
-| BigQuery Dataset (raw) | `ecommerce_raw` |
-| BigQuery Dataset (prod) | `ecommerce_prod` |
-| Cloud Composer | `nyc-tlc-analytics-composer` (small env) |
-| Service Account | `nyc-tlc-pipeline-sa` with BigQuery Admin, Storage Admin, Composer Worker, Dataproc Editor |
+| GCP_PROJECT_ID | Target GCP project |
+| GCS_BUCKET | Data lake bucket |
+| BQ_RAW_DATASET | Raw dataset (default nyc_tlc_raw) |
+| BQ_PROD_DATASET | Curated dataset (default nyc_tlc_prod) |
+| TLC_TAXI_TYPE | Taxi type to download |
+| TLC_START_MONTH | Download start month (YYYY-MM) |
+| TLC_END_MONTH | Download end month (YYYY-MM) |
+| GOOGLE_APPLICATION_CREDENTIALS | Service account key path |
 
-## Design Decisions
+## Why This Design
 
-- **Spark over Pandas**: 14.68 GB minimum dataset — Pandas hits OOM. Spark handles 30 GB with room to scale.
-- **Parquet over CSV**: Columnar format, 5-10x compression, predicate pushdown in BigQuery.
-- **Partitioning by date**: Most queries filter by date range — eliminates full table scans.
-- **Clustering by event_type + category**: Most common filter/group-by columns.
-- **dbt in Docker**: Reproducible, no local dbt install needed, same image in CI and Composer.
-- **Monthly schedule**: Dataset updates monthly — aligns with source cadence.
+- Monthly parquet source is stable and reproducible.
+- Partitioning by pickup_date improves scan efficiency.
+- Clustering supports common analytics by zones and payment type.
+- dbt enforces modular, testable SQL transformations.
+- Airflow keeps orchestration explicit and schedulable.

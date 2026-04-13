@@ -1,31 +1,31 @@
 -- dim_product.sql
--- One row per product with latest brand and category info.
+-- Zone dimension from pickup/dropoff location IDs.
 
 {{ config(materialized='table') }}
 
-with products as (
+with all_zones as (
 
     select
-        product_id,
-        category_id,
-        category_level1,
-        category_level2,
-        brand,
-        row_number() over (
-            partition by product_id
-            order by event_time desc
-        ) as rn
-
+        pulocation_id as location_id,
+        'pickup' as zone_role
     from {{ ref('stg_events') }}
+    where pulocation_id is not null
+
+    union all
+
+    select
+        dolocation_id as location_id,
+        'dropoff' as zone_role
+    from {{ ref('stg_events') }}
+    where dolocation_id is not null
 
 )
 
 select
-    product_id,
-    category_id,
-    category_level1,
-    category_level2,
-    brand
+    location_id,
+    count(*) as total_trips_touching_zone,
+    countif(zone_role = 'pickup') as pickup_trips,
+    countif(zone_role = 'dropoff') as dropoff_trips
 
-from products
-where rn = 1
+from all_zones
+group by location_id

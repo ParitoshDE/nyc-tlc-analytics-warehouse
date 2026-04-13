@@ -1,31 +1,29 @@
 version: 2
 
 sources:
-  - name: ecommerce_raw
+  - name: nyc_tlc_raw
     database: "{{ env_var('GCP_PROJECT_ID') }}"
-    schema: "{{ env_var('BQ_RAW_DATASET', 'ecommerce_raw') }}"
+    schema: "{{ env_var('BQ_RAW_DATASET', 'nyc_tlc_raw') }}"
     tables:
-      - name: events
-        description: "Raw eCommerce behavior events loaded from Spark Parquet output"
+      - name: trips
+        description: "Raw NYC TLC trips loaded from Spark parquet output"
 
 models:
   - name: stg_events
-    description: "Cleaned and typed events from the raw layer"
+    description: "Cleaned and typed NYC TLC trips from the raw layer"
     columns:
-      - name: event_time
+      - name: pickup_datetime
         tests:
           - not_null
-      - name: event_type
+      - name: pickup_date
         tests:
           - not_null
-          - accepted_values:
-              values: ['view', 'cart', 'remove_from_cart', 'purchase']
-      - name: user_id
+      - name: pulocation_id
         tests:
           - not_null
-      - name: user_session
+      - name: dolocation_id
         tests:
           - not_null
-      - name: price
+      - name: total_amount
         tests:
           - not_null

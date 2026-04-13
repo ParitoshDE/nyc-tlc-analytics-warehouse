@@ -1,41 +1,42 @@
 # nyc-tlc-analytics-warehouse
 
-End-to-end batch data pipeline processing **285 million e-commerce user events** (14.68 GB) through GCP using Airflow, Spark, BigQuery, and dbt.
+End-to-end batch data pipeline for NYC TLC trip data using GCP, Airflow, Spark, BigQuery, and dbt.
 
-## Business Question
+## Business Questions
 
-> *What are the conversion funnel drop-off rates by product category and brand, and how do session behavior and time-of-day patterns affect purchase probability?*
+- How do trip volume and revenue vary by pickup date and hour?
+- Which pickup/dropoff zones and payment types drive the most revenue?
+- How do distance and duration patterns change over time?
 
 ## Dataset
 
 | Property | Value |
 |---|---|
-| Source | [eCommerce behavior data from multi category store](https://www.kaggle.com/datasets/mkechinov/ecommerce-behavior-data-from-multi-category-store) |
-| Size | 14.68 GB (Oct + Nov 2019) — up to ~30 GB with extra months |
-| Records | ~285 million events |
-| Event types | `view`, `cart`, `remove_from_cart`, `purchase` |
-| Columns | `event_time`, `event_type`, `product_id`, `category_id`, `category_code`, `brand`, `price`, `user_id`, `user_session` |
+| Source | NYC TLC trip records (official monthly parquet files) |
+| URL pattern | https://d37ci6vzurychx.cloudfront.net/trip-data/{taxi_type}_tripdata_YYYY-MM.parquet |
+| Taxi types | yellow, green, fhv, fhvhv |
+| Default range | TLC_START_MONTH=2023-01 to TLC_END_MONTH=2023-12 |
 
 ## Architecture
 
 ```
-Kaggle API / REES46 URLs
-        │
-        ▼
-   ┌─────────┐     ┌──────────┐     ┌──────────────┐     ┌─────────┐     ┌──────────────┐
-   │ Airflow  │────▶│   GCS    │────▶│   PySpark    │────▶│BigQuery │────▶│ Looker Studio│
-   │(Composer)│     │(raw CSV) │     │(transform →  │     │  (DWH)  │     │ (dashboard)  │
-   └─────────┘     └──────────┘     │  Parquet)    │     └────┬────┘     └──────────────┘
-                                    └──────────────┘          │
-                                                         ┌────▼────┐
-                                                         │   dbt   │
-                                                         │ (models)│
-                                                         └─────────┘
+NYC TLC monthly parquet
+        |
+        v
+   +-----------+     +-----------+     +-----------+     +-----------+     +-------------+
+   |  Airflow  | --> |    GCS    | --> |  PySpark  | --> | BigQuery  | --> | Looker Studio|
+   | (Composer)|     | (raw zone)|     | transform |     |   (DWH)   |     |  dashboard   |
+   +-----------+     +-----------+     +-----------+     +-----+-----+     +-------------+
+                                                             |
+                                                           +---+
+                                                           |dbt|
+                                                           +---+
 ```
 
-**Airflow DAG** (6 tasks):
+Airflow DAG flow:
+
 ```
-download_from_kaggle → upload_raw_to_gcs → spark_transform → load_to_bigquery → dbt_run → dbt_test
+download_from_tlc -> upload_raw_to_gcs -> spark_transform -> load_to_bigquery -> dbt_run -> dbt_test
 ```
 
 ## Tech Stack
@@ -47,7 +48,7 @@ download_from_kaggle → upload_raw_to_gcs → spark_transform → load_to_bigqu
 | Orchestration | Cloud Composer (Airflow 2.x) |
 | Data Lake | Google Cloud Storage |
 | Batch Processing | PySpark |
-| Data Warehouse | BigQuery (partitioned by `event_date`, clustered by `event_type`, `category_level1`) |
+| Data Warehouse | BigQuery (partitioned by pickup_date) |
 | Transformations | dbt Core (Dockerized) |
 | Dashboard | Looker Studio |
 | Containerization | Docker + Docker Compose |
@@ -56,118 +57,90 @@ download_from_kaggle → upload_raw_to_gcs → spark_transform → load_to_bigqu
 
 ```
 nyc-tlc-analytics-warehouse/
-├── airflow/dags/              # Airflow DAG definition
-│   └── nyc_tlc_pipeline_dag.py
-├── dbt/                       # dbt project
-│   ├── models/
-│   │   ├── staging/           # stg_events (view)
-│   │   ├── dimensions/        # dim_product, dim_user, dim_session, dim_date
-│   │   ├── facts/             # fct_event (partitioned + clustered)
-│   │   └── aggregations/      # funnel, brand, hourly, cart abandonment
-│   ├── Dockerfile
-│   ├── dbt_project.yml
-│   ├── packages.yml
-│   └── profiles.yml
-├── spark/                     # PySpark transformation script
-│   └── transform_events.py
-├── scripts/                   # Python utility scripts
-│   ├── download_data.py
-│   ├── upload_to_gcs.py
-│   └── load_to_bigquery.py
-├── terraform/                 # GCP infrastructure
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   └── terraform.tfvars.example
-├── docker-compose.yml
-├── Makefile
-├── requirements.txt
-├── .env.example
-└── README.md
++-- airflow/dags/
+�   +-- nyc_tlc_pipeline_dag.py
++-- dbt/
+�   +-- models/
+�   �   +-- staging/
+�   �   +-- dimensions/
+�   �   +-- facts/
+�   �   +-- aggregations/
++-- spark/
+�   +-- transform_events.py
++-- scripts/
+�   +-- download_data.py
+�   +-- upload_to_gcs.py
+�   +-- load_to_bigquery.py
++-- terraform/
++-- docker-compose.yml
++-- Makefile
++-- requirements.txt
++-- .env.example
++-- README.md
 ```
 
 ## Quick Start
 
 ### Prerequisites
-- Python 3.10+
-- Docker & Docker Compose
-- Terraform >= 1.5
-- GCP account with billing enabled
-- Kaggle API token (`~/.kaggle/kaggle.json`)
 
-### 1. Clone and configure
+- Python 3.10+
+- Docker and Docker Compose
+- Terraform >= 1.5
+- GCP project with billing enabled
+- GCP service-account key JSON
+
+### 1) Configure environment
 
 ```bash
-git clone https://github.com/yourname/nyc-tlc-analytics-warehouse.git
+git clone https://github.com/ParitoshDE/nyc-tlc-analytics-warehouse.git
 cd nyc-tlc-analytics-warehouse
 cp .env.example .env
-# Edit .env with your GCP project ID, bucket name, and Kaggle credentials
 ```
 
-### 2. Install dependencies
+Update .env values (project, bucket, taxi type/month range, credentials path).
+
+### 2) Install dependencies
 
 ```bash
 make setup
 ```
 
-### 3. Provision infrastructure
+### 3) Provision infrastructure
 
 ```bash
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
-# Edit terraform.tfvars with your GCP project ID
 make infra-up
 ```
 
-### 4. Run the full pipeline
+### 4) Run pipeline
 
 ```bash
 make run
 ```
 
-This executes: download → upload to GCS → Spark transform → load to BigQuery → dbt run → dbt test
+This executes: download -> upload -> spark -> load-bq -> dbt-run -> dbt-test.
 
-### 5. Individual steps
+### 5) Run steps individually
 
 ```bash
-make download    # Download dataset from Kaggle
-make upload      # Upload raw CSVs to GCS
-make spark       # Run PySpark transformation
-make load-bq     # Load Parquet into BigQuery
-make dbt-run     # Run dbt models
-make dbt-test    # Run dbt data quality tests
+make download
+make upload
+make spark
+make load-bq
+make dbt-run
+make dbt-test
 ```
 
-### 6. Tear down
+### 6) Tear down
 
 ```bash
 make infra-down
 make clean
 ```
 
-## dbt Models
+## dbt Layers
 
-| Layer | Model | Type | Description |
-|---|---|---|---|
-| Staging | `stg_events` | view | Clean, typed events from raw |
-| Dimension | `dim_product` | table | One row per product — latest brand/category |
-| Dimension | `dim_user` | table | User profile — first/last seen, sessions, purchases |
-| Dimension | `dim_session` | table | Session metrics — duration, funnel flags, revenue |
-| Dimension | `dim_date` | table | Calendar dimension |
-| Fact | `fct_event` | table | Event grain — surrogate key, partitioned + clustered |
-| Aggregation | `agg_funnel_by_category` | table | View→cart→purchase conversion by category |
-| Aggregation | `agg_brand_performance` | table | Revenue, AOV, conversion by brand |
-| Aggregation | `agg_hourly_traffic` | table | Heatmap — events/conversions by hour × day |
-| Aggregation | `agg_cart_abandonment` | table | Abandoned cart analysis by date/category/brand |
-
-## Dashboard (Looker Studio)
-
-| Tile | Chart Type | Filter |
-|---|---|---|
-| Conversion funnel | Funnel chart | Category dropdown |
-| Revenue by brand (Top 20) | Horizontal bar | Month selector |
-| Hourly traffic heatmap | Heatmap (hour × day_of_week) | Event type toggle |
-| Cart abandonment trend | Line chart over time | Category filter |
-
-## License
-
-Dataset provided by [REES46 / Open CDP](https://rees46.com/en/open-cdp). Free to use with attribution.
+- Staging: normalized trips from raw BigQuery table
+- Dimensions: zones, vendors, payment types, date
+- Fact: trip-level fact table
+- Aggregations: daily, hourly, zone, and payment-type metrics

@@ -1,29 +1,32 @@
 -- fct_event.sql
--- Event fact table at the grain of one event.
+-- Trip fact table at the grain of one trip.
 
 {{ config(
     materialized='table',
     partition_by={
-        "field": "event_date",
+        "field": "pickup_date",
         "data_type": "date",
         "granularity": "day"
     },
-    cluster_by=["event_type", "category_level1"]
+    cluster_by=["pulocation_id", "dolocation_id", "payment_type"]
 ) }}
 
 select
-    {{ dbt_utils.generate_surrogate_key(['user_session', 'event_time', 'product_id', 'event_type']) }} as event_id,
-    event_time,
-    event_date,
-    hour,
+    {{ dbt_utils.generate_surrogate_key(['vendor_id', 'pickup_datetime', 'pulocation_id', 'dolocation_id']) }} as event_id,
+    vendor_id,
+    pickup_datetime,
+    dropoff_datetime,
+    pickup_date,
+    pickup_hour,
     day_of_week,
-    event_type,
-    product_id,
-    category_level1,
-    category_level2,
-    brand,
-    price,
-    user_id,
-    user_session
+    passenger_count,
+    trip_distance,
+    pulocation_id,
+    dolocation_id,
+    payment_type,
+    fare_amount,
+    tip_amount,
+    total_amount,
+    trip_duration_min
 
 from {{ ref('stg_events') }}

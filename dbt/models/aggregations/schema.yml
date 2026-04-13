@@ -2,27 +2,27 @@ version: 2
 
 models:
   - name: agg_funnel_by_category
-    description: "Conversion funnel rates (view→cart→purchase) by product category"
+    description: "Trip volume and fare metrics by pickup zone"
     columns:
-      - name: category_level1
+      - name: pulocation_id
         tests:
           - not_null
-      - name: total_sessions
+      - name: total_trips
         tests:
           - not_null
 
   - name: agg_brand_performance
-    description: "Brand-level revenue, order count, AOV, and conversion rate"
+    description: "Payment-type performance metrics"
     columns:
-      - name: brand
+      - name: payment_type
         tests:
           - unique
           - not_null
 
   - name: agg_hourly_traffic
-    description: "Hourly traffic heatmap — events, conversions, revenue by hour and day_of_week"
+    description: "Hourly traffic and revenue by day_of_week"
     columns:
-      - name: hour
+      - name: pickup_hour
         tests:
           - not_null
       - name: day_of_week
@@ -30,8 +30,8 @@ models:
           - not_null
 
   - name: agg_cart_abandonment
-    description: "Cart abandonment analysis — sessions with cart but no purchase, by date/category/brand"
+    description: "Top zone pairs by date with trip and revenue metrics"
     columns:
-      - name: session_date
+      - name: pickup_date
         tests:
           - not_null

@@ -1,16 +1,18 @@
 -- dim_user.sql
--- One row per user with first/last seen and total sessions.
+-- Vendor dimension with trip/revenue statistics.
 
 {{ config(materialized='table') }}
 
 select
-    user_id,
-    min(event_date)                   as first_seen_date,
-    max(event_date)                   as last_seen_date,
-    count(distinct user_session)      as total_sessions,
-    count(*)                          as total_events,
-    countif(event_type = 'purchase')  as total_purchases
+    vendor_id,
+    min(pickup_date)             as first_seen_date,
+    max(pickup_date)             as last_seen_date,
+    count(*)                     as total_trips,
+    sum(total_amount)            as total_revenue,
+    avg(total_amount)            as avg_trip_revenue,
+    avg(trip_duration_min)       as avg_trip_duration_min
 
 from {{ ref('stg_events') }}
+where vendor_id is not null
 
-group by user_id
+group by vendor_id

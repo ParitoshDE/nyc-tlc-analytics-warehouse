@@ -2,25 +2,25 @@ version: 2
 
 models:
   - name: dim_product
-    description: "Product dimension — one row per product_id with latest brand/category"
+    description: "Zone dimension — one row per taxi zone id"
     columns:
-      - name: product_id
+      - name: location_id
         tests:
           - unique
           - not_null
 
   - name: dim_user
-    description: "User dimension — first/last seen, session counts, purchase counts"
+    description: "Vendor dimension — trip and revenue stats per vendor"
     columns:
-      - name: user_id
+      - name: vendor_id
         tests:
           - unique
           - not_null
 
   - name: dim_session
-    description: "Session dimension — duration, event counts, funnel flags, revenue"
+    description: "Payment type dimension — trip and revenue stats by payment type"
     columns:
-      - name: user_session
+      - name: payment_type
         tests:
           - unique
           - not_null

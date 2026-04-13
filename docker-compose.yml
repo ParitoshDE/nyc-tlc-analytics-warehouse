@@ -11,8 +11,8 @@ services:
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/usr/app/keys/gcp-service-account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
-      - BQ_RAW_DATASET=${BQ_RAW_DATASET:-ecommerce_raw}
-      - BQ_PROD_DATASET=${BQ_PROD_DATASET:-ecommerce_prod}
+      - BQ_RAW_DATASET=${BQ_RAW_DATASET:-nyc_tlc_raw}
+      - BQ_PROD_DATASET=${BQ_PROD_DATASET:-nyc_tlc_prod}
       - GCP_REGION=${GCP_REGION:-us-central1}
     working_dir: /usr/app/dbt
     entrypoint: ["dbt"]
