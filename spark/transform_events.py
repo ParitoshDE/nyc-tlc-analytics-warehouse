@@ -7,8 +7,12 @@ partitioned Parquet for BigQuery load.
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+from py4j.protocol import Py4JJavaError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
@@ -26,7 +30,47 @@ def get_spark() -> SparkSession:
     )
 
 
-def transform(spark: SparkSession, input_paths: str | list[str], output_path: str) -> None:
+def write_with_pyarrow_fallback(df_final, output_path: str, batch_size: int = 50000) -> None:
+    out_dir = Path(output_path)
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    rows_batch: list[dict] = []
+    rows_written = 0
+
+    for row in df_final.toLocalIterator():
+        rows_batch.append(row.asDict(recursive=True))
+        if len(rows_batch) >= batch_size:
+            table = pa.Table.from_pylist(rows_batch)
+            pq.write_to_dataset(
+                table,
+                root_path=str(out_dir),
+                partition_cols=["pickup_date"],
+                compression="snappy",
+            )
+            rows_written += len(rows_batch)
+            rows_batch = []
+
+    if rows_batch:
+        table = pa.Table.from_pylist(rows_batch)
+        pq.write_to_dataset(
+            table,
+            root_path=str(out_dir),
+            partition_cols=["pickup_date"],
+            compression="snappy",
+        )
+        rows_written += len(rows_batch)
+
+    print(f"[spark] Fallback write complete: {rows_written} rows at {output_path}")
+
+
+def transform(
+    spark: SparkSession,
+    input_paths: str | list[str],
+    output_path: str,
+    sample_rows: int | None = None,
+) -> None:
     # ---- Read raw parquet files ----
     if isinstance(input_paths, list):
         df_raw = spark.read.parquet(*input_paths)
@@ -116,22 +160,35 @@ def transform(spark: SparkSession, input_paths: str | list[str], output_path: st
         )
     )
 
+    if sample_rows is not None and sample_rows > 0:
+        df_final = df_final.limit(sample_rows)
+        print(f"[spark] Applying local sample cap: {sample_rows} rows")
+
     print(f"[spark] Writing {df_final.count()} rows to {output_path}")
 
-    (
-        df_final
-        .repartition("pickup_date")
-        .write
-        .mode("overwrite")
-        .partitionBy("pickup_date")
-        .parquet(output_path)
-    )
+    try:
+        (
+            df_final
+            .repartition("pickup_date")
+            .write
+            .mode("overwrite")
+            .partitionBy("pickup_date")
+            .parquet(output_path)
+        )
+    except Py4JJavaError as exc:
+        message = str(exc)
+        if "NativeIO$Windows.access0" in message and not output_path.startswith("gs://"):
+            print("[spark] Native Hadoop Windows IO issue detected, using pyarrow fallback writer")
+            write_with_pyarrow_fallback(df_final, output_path)
+        else:
+            raise
 
     print("[spark] Transform complete")
 
 
 def main() -> None:
     gcs_bucket = os.getenv("GCS_BUCKET", "")
+    sample_rows: int | None = None
 
     if gcs_bucket:
         input_paths: str | list[str] = f"gs://{gcs_bucket}/raw/*.parquet"
@@ -144,12 +201,14 @@ def main() -> None:
             raise FileNotFoundError(f"No parquet files found in {raw_dir}")
         input_paths = local_files
         output_path = os.path.join(base, "data", "processed")
+        if os.name == "nt":
+            sample_rows = int(os.getenv("TLC_LOCAL_SAMPLE_ROWS", "200000"))
 
     print(f"[spark] Input:  {input_paths}")
     print(f"[spark] Output: {output_path}")
 
     spark = get_spark()
-    transform(spark, input_paths, output_path)
+    transform(spark, input_paths, output_path, sample_rows=sample_rows)
     spark.stop()
 
 
