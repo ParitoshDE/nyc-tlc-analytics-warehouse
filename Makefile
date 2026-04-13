@@ -1,0 +1,40 @@
+.PHONY: help setup infra-up infra-down download upload spark dbt-run dbt-test run clean
+
+include .env
+export
+
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+setup: ## Install Python deps and configure Kaggle
+	pip install -r requirements.txt
+	mkdir -p data/raw data/processed keys
+
+infra-up: ## Provision GCP resources with Terraform
+	cd terraform && terraform init && terraform apply -auto-approve
+
+infra-down: ## Tear down GCP resources
+	cd terraform && terraform destroy -auto-approve
+
+download: ## Download dataset from Kaggle
+	python scripts/download_data.py
+
+upload: ## Upload raw CSVs to GCS
+	python scripts/upload_to_gcs.py
+
+spark: ## Run PySpark transformation
+	python spark/transform_events.py
+
+load-bq: ## Load processed Parquet into BigQuery
+	python scripts/load_to_bigquery.py
+
+dbt-run: ## Run dbt models (via Docker)
+	docker compose run --rm dbt run
+
+dbt-test: ## Run dbt tests (via Docker)
+	docker compose run --rm dbt test
+
+run: download upload spark load-bq dbt-run dbt-test ## Run full pipeline end-to-end
+
+clean: ## Remove local data files
+	rm -rf data/raw/* data/processed/*

@@ -1,0 +1,29 @@
+name: "nyc_tlc_analytics_warehouse"
+version: "1.0.0"
+config-version: 2
+
+profile: "nyc_tlc_analytics_warehouse"
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+docs-paths: ["docs"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  nyc_tlc_analytics_warehouse:
+    staging:
+      +materialized: view
+    dimensions:
+      +materialized: table
+    facts:
+      +materialized: table
+    aggregations:
+      +materialized: table
