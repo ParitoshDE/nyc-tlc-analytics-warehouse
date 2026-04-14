@@ -3,6 +3,28 @@ version: 2
 models:
   - name: fct_event
     description: "Trip fact table — one row per taxi trip with surrogate key"
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "trip_duration_min > 0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "trip_distance >= 0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "fare_amount >= 0"
+          config:
+            severity: warn
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "tip_amount >= 0"
+          config:
+            severity: warn
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "total_amount >= 0"
+          config:
+            severity: warn
     columns:
       - name: event_id
         tests:
