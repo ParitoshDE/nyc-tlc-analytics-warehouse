@@ -5,7 +5,7 @@
 
 with source as (
 
-    select * from {{ source('ecommerce_raw', 'trips') }}
+    select * from {{ source('nyc_tlc_raw', 'trips') }}
 
 ),
 

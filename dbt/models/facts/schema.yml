@@ -14,10 +14,12 @@ models:
       - name: pulocation_id
         tests:
           - relationships:
-              to: ref('dim_product')
-              field: location_id
+              arguments:
+                to: ref('dim_product')
+                field: location_id
       - name: vendor_id
         tests:
           - relationships:
-              to: ref('dim_user')
-              field: vendor_id
+              arguments:
+                to: ref('dim_user')
+                field: vendor_id

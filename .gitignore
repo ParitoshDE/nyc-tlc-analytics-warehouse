@@ -198,6 +198,9 @@ cython_debug/
 # Data files (too large for git)
 data/
 *.csv
+
+# dbt local machine state
+dbt/.user.yml
 *.parquet
 *.csv.gz
 

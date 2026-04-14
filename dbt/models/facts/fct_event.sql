@@ -11,8 +11,18 @@
     cluster_by=["pulocation_id", "dolocation_id", "payment_type"]
 ) }}
 
+with trips as (
+    select
+        *,
+        row_number() over (
+            partition by vendor_id, pickup_datetime, pulocation_id, dolocation_id
+            order by dropoff_datetime, total_amount, fare_amount, tip_amount, trip_distance
+        ) as trip_seq
+    from {{ ref('stg_events') }}
+)
+
 select
-    {{ dbt_utils.generate_surrogate_key(['vendor_id', 'pickup_datetime', 'pulocation_id', 'dolocation_id']) }} as event_id,
+    {{ dbt_utils.generate_surrogate_key(['vendor_id', 'pickup_datetime', 'pulocation_id', 'dolocation_id', 'trip_seq']) }} as event_id,
     vendor_id,
     pickup_datetime,
     dropoff_datetime,
@@ -29,4 +39,4 @@ select
     total_amount,
     trip_duration_min
 
-from {{ ref('stg_events') }}
+from trips
