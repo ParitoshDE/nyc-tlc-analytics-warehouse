@@ -58,19 +58,19 @@ download_from_tlc -> upload_raw_to_gcs -> spark_transform -> load_to_bigquery ->
 ```
 nyc-tlc-analytics-warehouse/
 +-- airflow/dags/
-¦   +-- nyc_tlc_pipeline_dag.py
+ï¿½   +-- nyc_tlc_pipeline_dag.py
 +-- dbt/
-¦   +-- models/
-¦   ¦   +-- staging/
-¦   ¦   +-- dimensions/
-¦   ¦   +-- facts/
-¦   ¦   +-- aggregations/
+ï¿½   +-- models/
+ï¿½   ï¿½   +-- staging/
+ï¿½   ï¿½   +-- dimensions/
+ï¿½   ï¿½   +-- facts/
+ï¿½   ï¿½   +-- aggregations/
 +-- spark/
-¦   +-- transform_events.py
+ï¿½   +-- transform_events.py
 +-- scripts/
-¦   +-- download_data.py
-¦   +-- upload_to_gcs.py
-¦   +-- load_to_bigquery.py
+ï¿½   +-- download_data.py
+ï¿½   +-- upload_to_gcs.py
+ï¿½   +-- load_to_bigquery.py
 +-- terraform/
 +-- docker-compose.yml
 +-- Makefile
@@ -137,6 +137,12 @@ make dbt-test
 make infra-down
 make clean
 ```
+
+## Dashboard Build Assets
+
+- Blueprint: docs/dashboard_blueprint.md
+- BigQuery semantic views SQL: scripts/dashboard_views.sql
+- Live Dashboard: https://datastudio.google.com/reporting/b836db6d-8fbd-4f56-87ef-887983634be8
 
 ## dbt Layers
 

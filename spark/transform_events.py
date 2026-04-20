@@ -21,13 +21,35 @@ def col_or_null(df, name: str):
     return F.col(name) if name in df.columns else F.lit(None)
 
 
-def get_spark() -> SparkSession:
-    return (
+def get_spark(enable_gcs: bool) -> SparkSession:
+    builder = (
         SparkSession.builder
         .appName("nyc-tlc-transform")
         .config("spark.sql.parquet.compression.codec", "snappy")
-        .getOrCreate()
+        .config("spark.sql.parquet.enableVectorizedReader", "false")
     )
+
+    if enable_gcs:
+        builder = (
+            builder
+            # Add GCS connector so Spark can read/write gs:// paths directly.
+            .config("spark.jars.packages", "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.26")
+            .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem")
+            .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
+        )
+
+        credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if credentials_path:
+            normalized_path = credentials_path.replace("\\", "/")
+            builder = (
+                builder
+            .config("spark.hadoop.google.cloud.auth.service.account.enable", "true")
+            .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", normalized_path)
+            .config("spark.hadoop.fs.gs.auth.service.account.enable", "true")
+            .config("spark.hadoop.fs.gs.auth.service.account.json.keyfile", normalized_path)
+            )
+
+    return builder.getOrCreate()
 
 
 def write_with_pyarrow_fallback(df_final, output_path: str, batch_size: int = 50000) -> None:
@@ -38,28 +60,22 @@ def write_with_pyarrow_fallback(df_final, output_path: str, batch_size: int = 50
 
     rows_batch: list[dict] = []
     rows_written = 0
+    file_index = 0
 
     for row in df_final.toLocalIterator():
         rows_batch.append(row.asDict(recursive=True))
         if len(rows_batch) >= batch_size:
             table = pa.Table.from_pylist(rows_batch)
-            pq.write_to_dataset(
-                table,
-                root_path=str(out_dir),
-                partition_cols=["pickup_date"],
-                compression="snappy",
-            )
+            file_path = out_dir / f"part-{file_index:05d}.parquet"
+            pq.write_table(table, file_path, compression="snappy")
             rows_written += len(rows_batch)
             rows_batch = []
+            file_index += 1
 
     if rows_batch:
         table = pa.Table.from_pylist(rows_batch)
-        pq.write_to_dataset(
-            table,
-            root_path=str(out_dir),
-            partition_cols=["pickup_date"],
-            compression="snappy",
-        )
+        file_path = out_dir / f"part-{file_index:05d}.parquet"
+        pq.write_table(table, file_path, compression="snappy")
         rows_written += len(rows_batch)
 
     print(f"[spark] Fallback write complete: {rows_written} rows at {output_path}")
@@ -72,10 +88,28 @@ def transform(
     sample_rows: int | None = None,
 ) -> None:
     # ---- Read raw parquet files ----
+    reader = spark.read
+    sampled_per_input = False
     if isinstance(input_paths, list):
-        df_raw = spark.read.parquet(*input_paths)
+        df_raw = None
+        rows_per_input = None
+        if sample_rows is not None and sample_rows > 0 and len(input_paths) > 0:
+            # Keep monthly coverage by sampling each input file instead of limiting after union.
+            rows_per_input = max(1, (sample_rows + len(input_paths) - 1) // len(input_paths))
+            sampled_per_input = True
+            print(f"[spark] Applying per-file sample cap: {rows_per_input} rows x {len(input_paths)} files")
+        for path in input_paths:
+            df_part = reader.parquet(path)
+            if rows_per_input is not None:
+                df_part = df_part.limit(rows_per_input)
+            if df_raw is None:
+                df_raw = df_part
+            else:
+                df_raw = df_raw.unionByName(df_part, allowMissingColumns=True)
+        if df_raw is None:
+            raise FileNotFoundError("No parquet input files were found")
     else:
-        df_raw = spark.read.parquet(input_paths)
+        df_raw = reader.parquet(input_paths)
 
     # Normalize mixed taxi schemas (yellow/green variants)
     pickup_ts = F.coalesce(
@@ -160,7 +194,7 @@ def transform(
         )
     )
 
-    if sample_rows is not None and sample_rows > 0:
+    if sample_rows is not None and sample_rows > 0 and not sampled_per_input:
         df_final = df_final.limit(sample_rows)
         print(f"[spark] Applying local sample cap: {sample_rows} rows")
 
@@ -177,7 +211,14 @@ def transform(
         )
     except Py4JJavaError as exc:
         message = str(exc)
-        if "NativeIO$Windows.access0" in message and not output_path.startswith("gs://"):
+        if (
+            (
+                "NativeIO$Windows.access0" in message
+                or "HADOOP_HOME and hadoop.home.dir are unset" in message
+                or "getWinUtilsPath" in message
+            )
+            and not output_path.startswith("gs://")
+        ):
             print("[spark] Native Hadoop Windows IO issue detected, using pyarrow fallback writer")
             write_with_pyarrow_fallback(df_final, output_path)
         else:
@@ -191,9 +232,11 @@ def main() -> None:
     sample_rows: int | None = None
 
     if gcs_bucket:
+        enable_gcs = True
         input_paths: str | list[str] = f"gs://{gcs_bucket}/raw/*.parquet"
         output_path = f"gs://{gcs_bucket}/processed/"
     else:
+        enable_gcs = False
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         raw_dir = Path(base) / "data" / "raw"
         local_files = sorted(str(p) for p in raw_dir.glob("*.parquet"))
@@ -207,7 +250,7 @@ def main() -> None:
     print(f"[spark] Input:  {input_paths}")
     print(f"[spark] Output: {output_path}")
 
-    spark = get_spark()
+    spark = get_spark(enable_gcs=enable_gcs)
     transform(spark, input_paths, output_path, sample_rows=sample_rows)
     spark.stop()
 

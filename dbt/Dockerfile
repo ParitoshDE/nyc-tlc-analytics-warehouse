@@ -1,6 +1,6 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-RUN pip install --no-cache-dir dbt-core==1.7.* dbt-bigquery==1.7.*
+RUN pip install --no-cache-dir dbt-core==1.11.* dbt-bigquery==1.11.*
 
 WORKDIR /usr/app/dbt
 
