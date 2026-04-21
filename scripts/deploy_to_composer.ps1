@@ -33,6 +33,8 @@ $pipelineSa = gcloud iam service-accounts list `
     --filter "email~nyc-tlc-pipeline-sa" `
     --format "value(email)" | Select-Object -First 1
 
+$composerRunBase = "gcloud composer environments run $ComposerEnvName --location $Region --project $ProjectId"
+
 # Sync directories needed at runtime.
 $dirMappings = @(
     @{ src = "$repoRoot/airflow"; dst = "$targetRoot/airflow" },
@@ -98,32 +100,20 @@ if (Test-Path $envPath) {
 
         if ($allowed -contains $key) {
             Write-Output "[deploy] set variable: $key"
-            gcloud composer environments run $ComposerEnvName `
-                --location $Region `
-                --project $ProjectId `
-                variables -- --set $key $value
+            cmd /c "$composerRunBase variables -- set $key $value"
         }
     }
 }
 
 Write-Output "[deploy] set variable: COMPOSER_REPO_ROOT_GCS"
-gcloud composer environments run $ComposerEnvName `
-    --location $Region `
-    --project $ProjectId `
-    variables -- --set COMPOSER_REPO_ROOT_GCS $targetRoot
+cmd /c "$composerRunBase variables -- set COMPOSER_REPO_ROOT_GCS $targetRoot"
 
 if ($pipelineSa) {
     Write-Output "[deploy] set variable: PIPELINE_SERVICE_ACCOUNT"
-    gcloud composer environments run $ComposerEnvName `
-        --location $Region `
-        --project $ProjectId `
-        variables -- --set PIPELINE_SERVICE_ACCOUNT $pipelineSa
+    cmd /c "$composerRunBase variables -- set PIPELINE_SERVICE_ACCOUNT $pipelineSa"
 }
 
 Write-Output "[deploy] Unpausing DAG nyc_tlc_analytics_pipeline"
-gcloud composer environments run $ComposerEnvName `
-    --location $Region `
-    --project $ProjectId `
-    dags -- unpause nyc_tlc_analytics_pipeline
+cmd /c "$composerRunBase dags -- unpause nyc_tlc_analytics_pipeline"
 
 Write-Output "[deploy] Done. Use scripts/trigger_composer_dag.ps1 to trigger a run."
