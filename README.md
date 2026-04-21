@@ -165,6 +165,12 @@ make composer-deploy
 make composer-trigger
 ```
 
+1. One-command production execution (deploy + trigger + wait for success/failure):
+
+```bash
+make prod-run
+```
+
 Notes:
 
 - Deployment script: `scripts/deploy_to_composer.ps1`

@@ -1,4 +1,4 @@
-.PHONY: help setup infra-up infra-down download upload spark dbt-run dbt-test run composer-deploy composer-trigger clean
+.PHONY: help setup infra-up infra-down download upload spark dbt-run dbt-test run composer-deploy composer-trigger prod-run clean
 
 include .env
 export
@@ -41,6 +41,9 @@ composer-deploy: ## Deploy DAG and runtime files to Cloud Composer and sync Airf
 
 composer-trigger: ## Trigger Cloud Composer DAG run
 	powershell -ExecutionPolicy Bypass -File scripts/trigger_composer_dag.ps1
+
+prod-run: ## Production run: deploy, trigger, and wait for DAG completion (non-zero on fail/timeout)
+	powershell -ExecutionPolicy Bypass -File scripts/prod_run_composer.ps1
 
 clean: ## Remove local data files
 	rm -rf data/raw/* data/processed/*
