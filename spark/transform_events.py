@@ -22,6 +22,18 @@ def col_or_null(df, name: str):
     return F.col(name) if name in df.columns else F.lit(None)
 
 
+def expand_glob_paths(spark: SparkSession, pattern: str) -> list[str]:
+    """Resolve wildcard paths (including gs://) into concrete file paths via Hadoop FS."""
+    jvm = spark._jvm
+    hconf = spark._jsc.hadoopConfiguration()
+    path_obj = jvm.org.apache.hadoop.fs.Path(pattern)
+    fs = jvm.org.apache.hadoop.fs.FileSystem.get(path_obj.toUri(), hconf)
+    statuses = fs.globStatus(path_obj)
+    if statuses is None:
+        return []
+    return [str(status.getPath()) for status in statuses]
+
+
 def get_spark(enable_gcs: bool) -> SparkSession:
     builder = (
         SparkSession.builder
@@ -89,8 +101,15 @@ def transform(
     sample_rows: int | None = None,
 ) -> None:
     # ---- Read raw parquet files ----
-    reader = spark.read
+    reader = spark.read.option("mergeSchema", "true")
     sampled_per_input = False
+
+    if isinstance(input_paths, str) and "*" in input_paths:
+        expanded = expand_glob_paths(spark, input_paths)
+        if not expanded:
+            raise FileNotFoundError(f"No parquet input files matched pattern: {input_paths}")
+        input_paths = sorted(expanded)
+
     if isinstance(input_paths, list):
         df_raw = None
         rows_per_input = None
@@ -204,10 +223,9 @@ def transform(
     try:
         (
             df_final
-            .repartition("pickup_date")
+            .repartition(16)
             .write
             .mode("overwrite")
-            .partitionBy("pickup_date")
             .parquet(output_path)
         )
     except Py4JJavaError as exc:
