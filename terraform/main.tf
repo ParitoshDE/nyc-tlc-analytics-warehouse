@@ -96,6 +96,14 @@ resource "google_composer_environment" "pipeline" {
   config {
     software_config {
       image_version = "composer-2-airflow-2"
+      pypi_packages = {
+        dbt-core             = "==1.11.8"
+        dbt-bigquery         = "==1.11.1"
+        python-dotenv        = "==1.2.2"
+        google-cloud-storage = "==3.10.1"
+        google-cloud-bigquery = "==3.41.0"
+        pyspark              = "==4.1.1"
+      }
     }
 
     workloads_config {

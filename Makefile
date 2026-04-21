@@ -1,4 +1,4 @@
-.PHONY: help setup infra-up infra-down download upload spark dbt-run dbt-test run clean
+.PHONY: help setup infra-up infra-down download upload spark dbt-run dbt-test run composer-deploy composer-trigger clean
 
 include .env
 export
@@ -35,6 +35,12 @@ dbt-test: ## Run dbt tests (via Docker)
 	docker compose run --rm dbt test
 
 run: download upload spark load-bq dbt-run dbt-test ## Run full pipeline end-to-end
+
+composer-deploy: ## Deploy DAG and runtime files to Cloud Composer and sync Airflow Variables
+	powershell -ExecutionPolicy Bypass -File scripts/deploy_to_composer.ps1
+
+composer-trigger: ## Trigger Cloud Composer DAG run
+	powershell -ExecutionPolicy Bypass -File scripts/trigger_composer_dag.ps1
 
 clean: ## Remove local data files
 	rm -rf data/raw/* data/processed/*

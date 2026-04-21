@@ -15,9 +15,22 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
-from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.operators.dataproc import DataprocCreateBatchOperator
 
-PROJECT_DIR = "/opt/airflow/dags/nyc-tlc-analytics-warehouse"
+PROJECT_DIR = "/home/airflow/gcs/dags/nyc-tlc-analytics-warehouse"
+
+ENV_EXPORT = (
+    "export GCP_PROJECT_ID='{{ var.value.get(\"GCP_PROJECT_ID\", \"\") }}' && "
+    "export GCP_REGION='{{ var.value.get(\"GCP_REGION\", \"us-central1\") }}' && "
+    "export GCS_BUCKET='{{ var.value.get(\"GCS_BUCKET\", \"\") }}' && "
+    "export BQ_RAW_DATASET='{{ var.value.get(\"BQ_RAW_DATASET\", \"nyc_tlc_raw\") }}' && "
+    "export BQ_PROD_DATASET='{{ var.value.get(\"BQ_PROD_DATASET\", \"nyc_tlc_prod\") }}' && "
+    "export TLC_TAXI_TYPE='{{ var.value.get(\"TLC_TAXI_TYPE\", \"yellow\") }}' && "
+    "export TLC_START_MONTH='{{ var.value.get(\"TLC_START_MONTH\", \"2023-01\") }}' && "
+    "export TLC_END_MONTH='{{ var.value.get(\"TLC_END_MONTH\", \"2023-12\") }}' && "
+    "export GOOGLE_APPLICATION_CREDENTIALS='{{ var.value.get(\"GOOGLE_APPLICATION_CREDENTIALS\", \"\") }}' && "
+    ""
+)
 
 default_args = {
     "owner": "data-engineering",
@@ -40,7 +53,7 @@ with DAG(
     download_from_tlc = BashOperator(
         task_id="download_from_tlc",
         bash_command=(
-            f"cd {PROJECT_DIR} && "
+            f"{ENV_EXPORT} cd {PROJECT_DIR} && "
             "python scripts/download_data.py"
         ),
     )
@@ -48,23 +61,39 @@ with DAG(
     upload_raw_to_gcs = BashOperator(
         task_id="upload_raw_to_gcs",
         bash_command=(
-            f"cd {PROJECT_DIR} && "
+            f"{ENV_EXPORT} cd {PROJECT_DIR} && "
             "python scripts/upload_to_gcs.py"
         ),
     )
 
-    spark_transform = BashOperator(
+    spark_transform = DataprocCreateBatchOperator(
         task_id="spark_transform",
-        bash_command=(
-            f"cd {PROJECT_DIR} && "
-            "python spark/transform_events.py"
-        ),
+        project_id="{{ var.value.get('GCP_PROJECT_ID', '') }}",
+        region="{{ var.value.get('GCP_REGION', 'us-central1') }}",
+        batch_id="nyc-tlc-spark-{{ ts_nodash | lower }}",
+        batch={
+            "pyspark_batch": {
+                "main_python_file_uri": "{{ var.value.get('COMPOSER_REPO_ROOT_GCS', '') }}/spark/transform_events.py",
+                "args": [
+                    "--gcs-bucket",
+                    "{{ var.value.get('GCS_BUCKET', '') }}",
+                ],
+            },
+            "runtime_config": {
+                "version": "2.2",
+            },
+            "environment_config": {
+                "execution_config": {
+                    "service_account": "{{ var.value.get('PIPELINE_SERVICE_ACCOUNT', '') }}",
+                },
+            },
+        },
     )
 
     load_to_bigquery = BashOperator(
         task_id="load_to_bigquery",
         bash_command=(
-            f"cd {PROJECT_DIR} && "
+            f"{ENV_EXPORT} cd {PROJECT_DIR} && "
             "python scripts/load_to_bigquery.py"
         ),
     )
@@ -72,16 +101,17 @@ with DAG(
     dbt_run = BashOperator(
         task_id="dbt_run",
         bash_command=(
-            "docker compose -f /opt/airflow/dags/nyc-tlc-analytics-warehouse/docker-compose.yml "
-            "run --rm dbt run"
+            f"{ENV_EXPORT} cd {PROJECT_DIR}/dbt && "
+            "dbt deps --project-dir . --profiles-dir . && "
+            "dbt run --project-dir . --profiles-dir ."
         ),
     )
 
     dbt_test = BashOperator(
         task_id="dbt_test",
         bash_command=(
-            "docker compose -f /opt/airflow/dags/nyc-tlc-analytics-warehouse/docker-compose.yml "
-            "run --rm dbt test"
+            f"{ENV_EXPORT} cd {PROJECT_DIR}/dbt && "
+            "dbt test --project-dir . --profiles-dir ."
         ),
     )
 

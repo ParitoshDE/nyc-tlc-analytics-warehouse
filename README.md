@@ -138,11 +138,47 @@ make infra-down
 make clean
 ```
 
+## Cloud Automation (Composer)
+
+Use this flow to move from local/manual execution to Composer-orchestrated runs.
+
+Runtime behavior in cloud mode:
+
+- `download_from_tlc`, `upload_raw_to_gcs`, `load_to_bigquery`, `dbt_run`, and `dbt_test` run on Composer workers.
+- `spark_transform` runs as a Dataproc Serverless batch job (not on Composer worker VM).
+
+1) Provision cloud resources (includes Composer):
+
+```bash
+make infra-up
+```
+
+1. Deploy DAG + runtime files to Composer and sync Airflow Variables from `.env`:
+
+```bash
+make composer-deploy
+```
+
+1. Trigger DAG in Composer:
+
+```bash
+make composer-trigger
+```
+
+Notes:
+
+- Deployment script: `scripts/deploy_to_composer.ps1`
+- Trigger script: `scripts/trigger_composer_dag.ps1`
+- DAG ID: `nyc_tlc_analytics_pipeline`
+- Composer env name default: `nyc-tlc-analytics-composer`
+- Composer variable `COMPOSER_REPO_ROOT_GCS` is set by deploy script and used as Spark code URI root.
+- Composer variable `PIPELINE_SERVICE_ACCOUNT` is set by deploy script for Dataproc batch execution.
+
 ## Dashboard Build Assets
 
 - Blueprint: docs/dashboard_blueprint.md
 - BigQuery semantic views SQL: scripts/dashboard_views.sql
-- Live Dashboard: https://datastudio.google.com/reporting/b836db6d-8fbd-4f56-87ef-887983634be8
+- Live Dashboard: [NYC TLC Analytics Dashboard](https://datastudio.google.com/reporting/b836db6d-8fbd-4f56-87ef-887983634be8)
 
 ## dbt Layers
 

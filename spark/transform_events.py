@@ -6,6 +6,7 @@ partitioned Parquet for BigQuery load.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 from pathlib import Path
@@ -228,7 +229,12 @@ def transform(
 
 
 def main() -> None:
-    gcs_bucket = os.getenv("GCS_BUCKET", "")
+    parser = argparse.ArgumentParser(description="NYC TLC Spark transform")
+    parser.add_argument("--gcs-bucket", default=None, help="GCS bucket name without gs:// prefix")
+    parser.add_argument("--sample-rows", type=int, default=None, help="Optional sample row cap")
+    args = parser.parse_args()
+
+    gcs_bucket = args.gcs_bucket if args.gcs_bucket is not None else os.getenv("GCS_BUCKET", "")
     sample_rows: int | None = None
 
     if gcs_bucket:
@@ -246,6 +252,9 @@ def main() -> None:
         output_path = os.path.join(base, "data", "processed")
         if os.name == "nt":
             sample_rows = int(os.getenv("TLC_LOCAL_SAMPLE_ROWS", "200000"))
+
+    if args.sample_rows is not None:
+        sample_rows = args.sample_rows
 
     print(f"[spark] Input:  {input_paths}")
     print(f"[spark] Output: {output_path}")
